@@ -20,14 +20,18 @@ FINANCIALS_PATH: str = "/financials/"
 
 
 def load_settings() -> Tuple[Optional[str], Optional[str]]:
-    """Load API settings from environment.
-
-    Returns a tuple of (api_key, csrf_token). If not found, returns (None, None) for the missing values.
-    """
     load_dotenv(override=False)
     api_key: Optional[str] = os.getenv("API_KEY")
-    # Support both custom and generic env var names for CSRF token
     csrf_token: Optional[str] = os.getenv("VI_CSRF_TOKEN") or os.getenv("X_CSRF_TOKEN")
+    try:
+        # Prefer Streamlit Secrets on Cloud if present
+        api_key = st.secrets.get("API_KEY", api_key)  # type: ignore[attr-defined]
+        csrf_token = (
+            st.secrets.get("VI_CSRF_TOKEN", csrf_token)  # type: ignore[attr-defined]
+            or st.secrets.get("X_CSRF_TOKEN", csrf_token)  # type: ignore[attr-defined]
+        )
+    except Exception:
+        pass
     return api_key, csrf_token
 
 

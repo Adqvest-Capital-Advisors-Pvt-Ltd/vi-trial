@@ -183,6 +183,27 @@ def scale_df_to_millions(df: pd.DataFrame) -> pd.DataFrame:
     return df.applymap(_scale_value_to_millions)
 
 
+@st.cache_data(show_spinner=False)
+def load_sample_company_names() -> List[str]:
+    """Load unique company names from local sample_data.csv if available.
+
+    Returns a sorted list of unique names or an empty list if file/column missing.
+    """
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        csv_path = os.path.join(current_dir, "sample_data.csv")
+        if not os.path.exists(csv_path):
+            return []
+        df = pd.read_csv(csv_path)
+        if "Company Name" not in df.columns:
+            return []
+        names_series = df["Company Name"].dropna().astype(str)
+        unique_names = sorted(names_series.unique().tolist())
+        return unique_names
+    except Exception:
+        return []
+
+
 def render_filings_tab(company_name: str, api_key: str, csrf_token: Optional[str]) -> None:
     st.subheader("Filings download and PDF view")
     if not company_name:
@@ -383,11 +404,38 @@ def main() -> None:
         st.header("Settings")
         st.markdown("The API Key is read from `.env` by default. You can override below.")
         default_company = "THINK & LEARN PRIVATE LIMITED"
-        st.caption("Enter a company name as used in the APIs.")
+        sample_names = load_sample_company_names()
+        st.caption("Choose a company from sample data or enter your own name used in the APIs.")
+
+        # Let switching modes trigger an immediate rerun by placing radio outside the form
+        mode_options = ["Select from sample", "Enter manually"] if sample_names else ["Enter manually"]
+        mode_default = st.session_state.get("company_input_mode") or ("Select from sample" if sample_names else "Enter manually")
+        st.radio(
+            "How would you like to provide the company name?",
+            options=mode_options,
+            index=(mode_options.index(mode_default) if mode_default in mode_options else 0),
+            horizontal=False,
+            key="company_input_mode",
+        )
+
         with st.form("company_form"):
             api_key_input = st.text_input("API Key", type="password", value=st.session_state.get("api_key", env_api_key) or "")
             csrf_input = st.text_input("CSRF Token (optional)", type="password", value=st.session_state.get("csrf_token", env_csrf) or "")
-            company_name_input = st.text_input("Company name", value=st.session_state.get("active_company_name") or default_company)
+            company_input_mode = st.session_state.get("company_input_mode") or ("Select from sample" if sample_names else "Enter manually")
+
+            # Company input widget(s)
+            company_name_input = None
+            if company_input_mode == "Select from sample" and sample_names:
+                company_name_input = st.selectbox(
+                    "Company name (from sample)",
+                    options=sample_names,
+                    index=max(0, sample_names.index(st.session_state.get("active_company_name", default_company)) if st.session_state.get("active_company_name") in sample_names else 0),
+                )
+            else:
+                company_name_input = st.text_input(
+                    "Company name",
+                    value=st.session_state.get("active_company_name") or default_company,
+                )
             submitted = st.form_submit_button("Submit")
 
         if submitted:
